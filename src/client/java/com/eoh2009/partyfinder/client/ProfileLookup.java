@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
@@ -30,19 +30,17 @@ public final class ProfileLookup {
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
-	/** What a successful lookup gives back. */
-	public record Result(String name, String uuid, DungeonStats stats, Timings timings) {}
+	/** What a successful lookup gives back. rawJson is null unless keepRaw was asked for. */
+	public record Result(String name, String uuid, DungeonStats stats, Timings timings, String rawJson) {}
 
 	/**
-	 * How long each step took, in ms. -1 means the step didn't run
-	 * (answer came from the cache, or no debug file was requested).
+	 * How long each step took, in ms. -1 means the step didn't run (answer came from the cache).
 	 * "volatile" because background threads write these and another thread reads them.
 	 */
 	public static final class Timings {
 		public volatile long mojangMs = -1;
 		public volatile long hypixelMs = -1;
 		public volatile long parseMs = -1;
-		public volatile long saveMs = -1;
 		public volatile int retries = 0;
 	}
 
@@ -55,19 +53,22 @@ public final class ProfileLookup {
 	private static final Map<String, Cached<DungeonStats>> STATS_CACHE = new ConcurrentHashMap<>(); // key: uuid
 
 	/**
-	 * Looks up a player's stats. rawListener (may be null) gets Hypixel's raw response
-	 * text when a fresh request is made, for saving debug files; it's not called on a cache hit.
+	 * Looks up a player's stats. With keepRaw = true (for /pftest <name> save) the stats cache
+	 * is skipped so Hypixel is really asked, and its raw response text is put in Result.rawJson.
 	 */
-	public static CompletableFuture<Result> lookup(String name, Consumer<String> rawListener) {
+	public static CompletableFuture<Result> lookup(String name, boolean keepRaw) {
 		// Same rule as Minecraft names. Also stops odd characters from breaking the URL.
 		if (!name.matches("\\w{1,16}")) {
 			return CompletableFuture.failedFuture(new LookupException("invalid name"));
 		}
 		Timings timings = new Timings();
+		// A small "box" the Hypixel step puts the raw response into. null = not wanted.
+		AtomicReference<String> raw = keepRaw ? new AtomicReference<>() : null;
 		// "Async" = continue on a background thread, never the game thread
 		// (fetchProfiles reads the config file).
 		return getUuid(name, timings).thenComposeAsync(uuid ->
-			getStats(uuid, rawListener, timings).thenApply(stats -> new Result(name, uuid, stats, timings)));
+			getStats(uuid, raw, timings).thenApply(stats ->
+				new Result(name, uuid, stats, timings, raw == null ? null : raw.get())));
 	}
 
 	private static CompletableFuture<String> getUuid(String name, Timings timings) {
@@ -79,15 +80,17 @@ public final class ProfileLookup {
 	}
 
 	/** Only the small parsed stats are cached, not the large raw response. */
-	private static CompletableFuture<DungeonStats> getStats(String uuid, Consumer<String> rawListener, Timings timings) {
+	private static CompletableFuture<DungeonStats> getStats(String uuid, AtomicReference<String> raw, Timings timings) {
+		if (raw != null) {
+			// Forget the cached stats, so the request below really goes to Hypixel.
+			STATS_CACHE.remove(uuid);
+		}
 		return cached(STATS_CACHE, uuid, () -> {
 			long hypixelStart = System.currentTimeMillis();
 			return fetchProfiles(uuid, timings).thenApply(json -> {
 				timings.hypixelMs = System.currentTimeMillis() - hypixelStart;
-				if (rawListener != null) {
-					long saveStart = System.currentTimeMillis();
-					rawListener.accept(json);
-					timings.saveMs = System.currentTimeMillis() - saveStart;
+				if (raw != null) {
+					raw.set(json);
 				}
 				long parseStart = System.currentTimeMillis();
 				DungeonStats stats = parseStats(json, uuid);

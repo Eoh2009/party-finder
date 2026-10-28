@@ -17,6 +17,7 @@ Goal: faster and more reliable than Odin's version, with a cleaner layout and ge
 - Package: `com.eoh2009.partyfinder`, split client/common sources. Almost all code belongs in `src/client`.
 - Editor: VS Code on Windows (Mac later). Run with `.\gradlew.bat runClient`.
 - The dev client is offline (Player102) and cannot join Hypixel. Test chat detection in singleplayer by feeding fake chat messages.
+- Python and Node are NOT installed. Use Java or PowerShell for helper scripts.
 
 ## Hard rules
 1. **Never put the Hypixel API key or Discord webhook URL in code or in git.** They live in the user's config file only (Hypixel API policy forbids sharing keys or embedding them in mods).
@@ -79,7 +80,7 @@ Keep lines short; chat is narrow. Shorten names if a line wraps.
 - [x] 1. Client-only chat message on game join (hello world)
 - [x] 2. Detect Party Finder join messages and extract name/class/level
 - [x] 3. Mojang + Hypixel lookups (async, cached), basic stats: Cata, Secrets, Blood
-- [ ] 4. Formatted chat output + [Kick] button
+- [x] 4. Formatted chat output + [Kick] button
 - [ ] 5. Gear + armor (NBT decoding)
 - [ ] 6. Magical Power
 - [ ] 7. Discord webhook output
