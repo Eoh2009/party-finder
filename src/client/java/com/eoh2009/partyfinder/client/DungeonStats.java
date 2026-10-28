@@ -41,7 +41,9 @@ public record DungeonStats(double cataLevel, long secrets, long runs, long blood
 		long secrets = (long) num(dungeons, "secrets");
 		// Don't use tier_completions.total: it's sometimes missing or doesn't match the floors.
 		long runs = sumFloors(obj(cata, "tier_completions")) + sumFloors(obj(master, "tier_completions"));
-		long blood = bloodKills(obj(obj(member, "player_stats"), "kills"));
+		// Exactly this one key (not watcher_summon_undead_<n> or master_...). Checked against
+		// the real blood counts of two players; see docs/api-fields.md.
+		long blood = (long) num(obj(obj(member, "player_stats"), "kills"), "watcher_summon_undead");
 
 		return new DungeonStats(cataLevel(xp), secrets, runs, blood);
 	}
@@ -75,21 +77,6 @@ public record DungeonStats(double cataLevel, long secrets, long runs, long blood
 		long sum = 0;
 		for (Map.Entry<String, JsonElement> e : tierCompletions.entrySet()) {
 			if (e.getKey().matches("\\d+")) {
-				sum += (long) e.getValue().getAsDouble();
-			}
-		}
-		return sum;
-	}
-
-	/** Blood mobs are the ones the Watcher spawns: kill keys start with "watcher" or "master_watcher". */
-	private static long bloodKills(JsonObject kills) {
-		if (kills == null) {
-			return 0;
-		}
-		long sum = 0;
-		for (Map.Entry<String, JsonElement> e : kills.entrySet()) {
-			String key = e.getKey();
-			if (key.startsWith("watcher") || key.startsWith("master_watcher")) {
 				sum += (long) e.getValue().getAsDouble();
 			}
 		}

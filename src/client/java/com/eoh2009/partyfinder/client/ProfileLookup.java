@@ -9,10 +9,12 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -23,13 +25,26 @@ import java.util.function.Supplier;
  * instead of blocking the game while waiting for the internet.
  */
 public final class ProfileLookup {
-	private static final Duration TIMEOUT = Duration.ofSeconds(10);
+	private static final Duration TIMEOUT = Duration.ofSeconds(15);
 	private static final long CACHE_MILLIS = Duration.ofMinutes(10).toMillis();
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
 	/** What a successful lookup gives back. */
-	public record Result(String name, String uuid, DungeonStats stats) {}
+	public record Result(String name, String uuid, DungeonStats stats, Timings timings) {}
+
+	/**
+	 * How long each step took, in ms. -1 means the step didn't run
+	 * (answer came from the cache, or no debug file was requested).
+	 * "volatile" because background threads write these and another thread reads them.
+	 */
+	public static final class Timings {
+		public volatile long mojangMs = -1;
+		public volatile long hypixelMs = -1;
+		public volatile long parseMs = -1;
+		public volatile long saveMs = -1;
+		public volatile int retries = 0;
+	}
 
 	// A cache entry stores the pending/finished request plus when it expires.
 	// Storing the future (not just the answer) means two lookups of the same player
@@ -48,24 +63,38 @@ public final class ProfileLookup {
 		if (!name.matches("\\w{1,16}")) {
 			return CompletableFuture.failedFuture(new LookupException("invalid name"));
 		}
+		Timings timings = new Timings();
 		// "Async" = continue on a background thread, never the game thread
 		// (fetchProfiles reads the config file).
-		return getUuid(name).thenComposeAsync(uuid ->
-			getStats(uuid, rawListener).thenApply(stats -> new Result(name, uuid, stats)));
+		return getUuid(name, timings).thenComposeAsync(uuid ->
+			getStats(uuid, rawListener, timings).thenApply(stats -> new Result(name, uuid, stats, timings)));
 	}
 
-	private static CompletableFuture<String> getUuid(String name) {
-		return cached(UUID_CACHE, name.toLowerCase(Locale.ROOT), () -> fetchUuid(name));
+	private static CompletableFuture<String> getUuid(String name, Timings timings) {
+		return cached(UUID_CACHE, name.toLowerCase(Locale.ROOT), () -> {
+			long start = System.currentTimeMillis();
+			return fetchUuid(name, timings).whenComplete((uuid, error) ->
+				timings.mojangMs = System.currentTimeMillis() - start);
+		});
 	}
 
 	/** Only the small parsed stats are cached, not the large raw response. */
-	private static CompletableFuture<DungeonStats> getStats(String uuid, Consumer<String> rawListener) {
-		return cached(STATS_CACHE, uuid, () -> fetchProfiles(uuid).thenApply(json -> {
-			if (rawListener != null) {
-				rawListener.accept(json);
-			}
-			return parseStats(json, uuid);
-		}));
+	private static CompletableFuture<DungeonStats> getStats(String uuid, Consumer<String> rawListener, Timings timings) {
+		return cached(STATS_CACHE, uuid, () -> {
+			long hypixelStart = System.currentTimeMillis();
+			return fetchProfiles(uuid, timings).thenApply(json -> {
+				timings.hypixelMs = System.currentTimeMillis() - hypixelStart;
+				if (rawListener != null) {
+					long saveStart = System.currentTimeMillis();
+					rawListener.accept(json);
+					timings.saveMs = System.currentTimeMillis() - saveStart;
+				}
+				long parseStart = System.currentTimeMillis();
+				DungeonStats stats = parseStats(json, uuid);
+				timings.parseMs = System.currentTimeMillis() - parseStart;
+				return stats;
+			});
+		});
 	}
 
 	private static DungeonStats parseStats(String json, String uuid) {
@@ -99,13 +128,25 @@ public final class ProfileLookup {
 		return entry.future();
 	}
 
-	private static CompletableFuture<String> fetchUuid(String name) {
+	/** Sends a request; if it times out, tries exactly once more. */
+	private static CompletableFuture<HttpResponse<String>> sendWithRetry(HttpRequest request, Timings timings) {
+		return HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+			.exceptionallyCompose(error -> {
+				if (unwrap(error) instanceof HttpTimeoutException) {
+					timings.retries++;
+					return HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+				}
+				return CompletableFuture.failedFuture(error);
+			});
+	}
+
+	private static CompletableFuture<String> fetchUuid(String name, Timings timings) {
 		HttpRequest request = HttpRequest.newBuilder(
 				URI.create("https://api.mojang.com/users/profiles/minecraft/" + name))
 			.timeout(TIMEOUT)
 			.GET()
 			.build();
-		return HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(response -> {
+		return sendWithRetry(request, timings).thenApply(response -> {
 			switch (response.statusCode()) {
 				case 200 -> {
 					// Verified response shape: {"id": "<uuid without dashes>", "name": "<name>"}
@@ -119,7 +160,7 @@ public final class ProfileLookup {
 		});
 	}
 
-	private static CompletableFuture<String> fetchProfiles(String uuid) {
+	private static CompletableFuture<String> fetchProfiles(String uuid, Timings timings) {
 		String apiKey = ModConfig.readApiKey();
 		if (apiKey.isEmpty()) {
 			return CompletableFuture.failedFuture(
@@ -131,7 +172,7 @@ public final class ProfileLookup {
 			.header("API-Key", apiKey)
 			.GET()
 			.build();
-		return HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(response -> {
+		return sendWithRetry(request, timings).thenApply(response -> {
 			switch (response.statusCode()) {
 				case 200 -> {
 					return response.body();
@@ -142,6 +183,14 @@ public final class ProfileLookup {
 					"Hypixel error " + response.statusCode() + causeOf(response.body()));
 			}
 		});
+	}
+
+	/** Errors from async code arrive wrapped in a CompletionException; this unwraps to the real one. */
+	static Throwable unwrap(Throwable error) {
+		while (error instanceof CompletionException && error.getCause() != null) {
+			error = error.getCause();
+		}
+		return error;
 	}
 
 	/** Hypixel errors look like {"success":false,"cause":"..."} (verified). Returns ": <cause>" or "". */

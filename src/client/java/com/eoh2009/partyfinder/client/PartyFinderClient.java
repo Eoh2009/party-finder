@@ -19,7 +19,6 @@ import java.net.http.HttpTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
-import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
 
 public class PartyFinderClient implements ClientModInitializer {
@@ -113,10 +112,29 @@ public class PartyFinderClient implements ClientModInitializer {
 			}
 			// Simple output for now; the final layout comes in Phase 4.
 			DungeonStats s = result.stats();
-			showMessage(String.format(Locale.ROOT, "%s: Cata %.1f ─ Secrets %s (%.1f/run) ─ Blood %s (%d ms)",
+			showMessage(String.format(Locale.ROOT, "%s: Cata %.1f ─ Secrets %s (%.1f/run) ─ Blood %s",
 				join.name(), s.cataLevel(), shortNumber(s.secrets()), s.secretsPerRun(),
-				shortNumber(s.bloodKills()), ms));
+				shortNumber(s.bloodKills())));
+			showMessage(timingLine(result.timings(), ms));
 		});
+	}
+
+	/** e.g. "Time 5.6s: Mojang 120ms ─ Hypixel 5300ms ─ parse 40ms ─ save 900ms" */
+	private static String timingLine(ProfileLookup.Timings t, long totalMs) {
+		String line = String.format(Locale.ROOT, "Time %dms: Mojang %s ─ Hypixel %s ─ parse %s",
+			totalMs, step(t.mojangMs), step(t.hypixelMs), step(t.parseMs));
+		if (t.saveMs >= 0) {
+			line += " ─ save " + t.saveMs + "ms";
+		}
+		if (t.retries > 0) {
+			line += " (retried " + t.retries + "x after timeout)";
+		}
+		return line;
+	}
+
+	/** A step that didn't run means its answer came from the cache. */
+	private static String step(long ms) {
+		return ms < 0 ? "cached" : ms + "ms";
 	}
 
 	/** Shortens big numbers: 950 -> "950", 7700 -> "7.7K", 2500000 -> "2.5M". */
@@ -147,10 +165,7 @@ public class PartyFinderClient implements ClientModInitializer {
 
 	/** Turns an error into a short reason for chat. */
 	private static String describe(Throwable error) {
-		// Errors from async code arrive wrapped in a CompletionException; unwrap to the real one.
-		while (error instanceof CompletionException && error.getCause() != null) {
-			error = error.getCause();
-		}
+		error = ProfileLookup.unwrap(error);
 		if (error instanceof LookupException) {
 			return error.getMessage();
 		}

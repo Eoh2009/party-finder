@@ -30,8 +30,13 @@ Paths only, no real values. `M` = `profiles[].members.<uuid>`.
 | `M.dungeons.secrets` | number | total secrets found |
 | `M.dungeons.selected_dungeon_class` | string | |
 | `M.dungeons.player_classes.<class>.experience` | number | archer, berserk, healer, mage, tank |
-| `M.player_stats.kills.watcher*` | number | blood mob kills, many keys (e.g. `watcher_summon_undead`, `watcher_bonzo`) |
-| `M.player_stats.kills.master_watcher*` | number | same, Master Mode |
+| `M.player_stats.kills.watcher_summon_undead` | number | **Blood mob kills.** This exact key only; matched known values for 2 players |
+
+Blood: candidates that did **not** match, so don't use them:
+- `M.dungeons.dungeon_types.catacombs.watcher_kills.<n>` / `.total` (number), and the same under `master_catacombs` (may be an empty object)
+- `M.player_stats.kills.watcher_summon_undead_<n>`, `M.player_stats.kills.master_watcher_summon_undead*` (either added in or alone)
+- every `M.player_stats.kills.watcher*` + `master_watcher*` key added together
+- `M.bestiary.kills.watcher_summon_undead_<n>` (number): bestiary has its own separate counters
 
 ### Items (each is `{ data: string, type: number }`; `data` = base64 + gzipped NBT)
 | Path | Notes |
