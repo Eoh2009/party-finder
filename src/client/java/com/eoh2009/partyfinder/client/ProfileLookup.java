@@ -31,7 +31,10 @@ public final class ProfileLookup {
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
 	/** What a successful lookup gives back. rawJson is null unless keepRaw was asked for. */
-	public record Result(String name, String uuid, DungeonStats stats, Timings timings, String rawJson) {}
+	public record Result(String name, String uuid, DungeonStats stats, Gear gear, Timings timings, String rawJson) {}
+
+	/** What gets cached per player: the parsed stats and gear (not the big raw response). */
+	private record Parsed(DungeonStats stats, Gear gear) {}
 
 	/**
 	 * How long each step took, in ms. -1 means the step didn't run (answer came from the cache).
@@ -41,6 +44,7 @@ public final class ProfileLookup {
 		public volatile long mojangMs = -1;
 		public volatile long hypixelMs = -1;
 		public volatile long parseMs = -1;
+		public volatile long gearMs = -1; // decoding the inventory/backpack item blobs
 		public volatile int retries = 0;
 	}
 
@@ -50,7 +54,7 @@ public final class ProfileLookup {
 	private record Cached<T>(CompletableFuture<T> future, long expiresAt) {}
 
 	private static final Map<String, Cached<String>> UUID_CACHE = new ConcurrentHashMap<>();        // key: lowercase name
-	private static final Map<String, Cached<DungeonStats>> STATS_CACHE = new ConcurrentHashMap<>(); // key: uuid
+	private static final Map<String, Cached<Parsed>> STATS_CACHE = new ConcurrentHashMap<>();       // key: uuid
 
 	/**
 	 * Looks up a player's stats. With keepRaw = true (for /pftest <name> save) the stats cache
@@ -67,8 +71,8 @@ public final class ProfileLookup {
 		// "Async" = continue on a background thread, never the game thread
 		// (fetchProfiles reads the config file).
 		return getUuid(name, timings).thenComposeAsync(uuid ->
-			getStats(uuid, raw, timings).thenApply(stats ->
-				new Result(name, uuid, stats, timings, raw == null ? null : raw.get())));
+			getStats(uuid, raw, timings).thenApply(parsed ->
+				new Result(name, uuid, parsed.stats(), parsed.gear(), timings, raw == null ? null : raw.get())));
 	}
 
 	private static CompletableFuture<String> getUuid(String name, Timings timings) {
@@ -80,7 +84,7 @@ public final class ProfileLookup {
 	}
 
 	/** Only the small parsed stats are cached, not the large raw response. */
-	private static CompletableFuture<DungeonStats> getStats(String uuid, AtomicReference<String> raw, Timings timings) {
+	private static CompletableFuture<Parsed> getStats(String uuid, AtomicReference<String> raw, Timings timings) {
 		if (raw != null) {
 			// Forget the cached stats, so the request below really goes to Hypixel.
 			STATS_CACHE.remove(uuid);
@@ -92,17 +96,23 @@ public final class ProfileLookup {
 				if (raw != null) {
 					raw.set(json);
 				}
-				long parseStart = System.currentTimeMillis();
-				DungeonStats stats = parseStats(json, uuid);
-				timings.parseMs = System.currentTimeMillis() - parseStart;
-				return stats;
+				return parse(json, uuid, timings);
 			});
 		});
 	}
 
-	private static DungeonStats parseStats(String json, String uuid) {
+	private static Parsed parse(String json, String uuid, Timings timings) {
 		try {
-			return DungeonStats.parse(json, uuid);
+			long parseStart = System.currentTimeMillis();
+			JsonObject member = DungeonStats.selectedMember(json, uuid);
+			DungeonStats stats = DungeonStats.parse(member);
+			timings.parseMs = System.currentTimeMillis() - parseStart;
+
+			// Timed separately: there can be many backpacks to decode.
+			long gearStart = System.currentTimeMillis();
+			Gear gear = Gear.parse(member);
+			timings.gearMs = System.currentTimeMillis() - gearStart;
+			return new Parsed(stats, gear);
 		} catch (LookupException e) {
 			throw e;
 		} catch (RuntimeException e) {

@@ -127,7 +127,7 @@ public class PartyFinderClient implements ClientModInitializer {
 				showMessage(join.name() + ": lookup failed (" + describe(error) + ")");
 				return;
 			}
-			showMessage(StatsMessage.build(join, result.stats()));
+			showMessage(StatsMessage.build(join, result.stats(), result.gear()));
 			if (isTest) {
 				showMessage(Component.literal(timingLine(result.timings(), ms)).withStyle(ChatFormatting.DARK_GRAY));
 			}
@@ -138,10 +138,10 @@ public class PartyFinderClient implements ClientModInitializer {
 		});
 	}
 
-	/** e.g. "Time 5600ms: Mojang 120ms ─ Hypixel 5300ms ─ parse 40ms" */
+	/** e.g. "Time 5600ms: Mojang 120ms ─ Hypixel 5300ms ─ parse 40ms ─ gear 60ms" */
 	private static String timingLine(ProfileLookup.Timings t, long totalMs) {
-		String line = String.format(Locale.ROOT, "Time %dms: Mojang %s ─ Hypixel %s ─ parse %s",
-			totalMs, step(t.mojangMs), step(t.hypixelMs), step(t.parseMs));
+		String line = String.format(Locale.ROOT, "Time %dms: Mojang %s ─ Hypixel %s ─ parse %s ─ gear %s",
+			totalMs, step(t.mojangMs), step(t.hypixelMs), step(t.parseMs), step(t.gearMs));
 		if (t.retries > 0) {
 			line += " (retried " + t.retries + "x after timeout)";
 		}

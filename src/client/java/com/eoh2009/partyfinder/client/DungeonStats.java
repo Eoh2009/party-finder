@@ -27,11 +27,17 @@ public record DungeonStats(double cataLevel, long secrets, long runs, long blood
 		return runs == 0 ? 0 : (double) secrets / runs;
 	}
 
-	/** Parses the raw /v2/skyblock/profiles response for the player with this UUID (no dashes). */
-	public static DungeonStats parse(String profilesJson, String uuid) {
+	/**
+	 * Reads the raw /v2/skyblock/profiles response and returns the data of the player with this
+	 * UUID (no dashes) in their selected profile. Both DungeonStats and Gear are parsed from it.
+	 */
+	public static JsonObject selectedMember(String profilesJson, String uuid) {
 		JsonObject root = JsonParser.parseString(profilesJson).getAsJsonObject();
-		JsonObject member = findSelectedMember(root, uuid);
+		return findSelectedMember(root, uuid);
+	}
 
+	/** Pulls the dungeon stats out of one player's member data (from selectedMember). */
+	public static DungeonStats parse(JsonObject member) {
 		JsonObject dungeons = obj(member, "dungeons");
 		JsonObject types = obj(dungeons, "dungeon_types");
 		JsonObject cata = obj(types, "catacombs");
@@ -99,7 +105,8 @@ public record DungeonStats(double cataLevel, long secrets, long runs, long blood
 	// Small helpers that return null / 0 instead of crashing when a field is missing
 	// (e.g. a player who has never done dungeons has no "dungeons" data).
 
-	private static JsonObject obj(JsonObject parent, String key) {
+	// Not private: Gear uses it too.
+	static JsonObject obj(JsonObject parent, String key) {
 		if (parent == null) {
 			return null;
 		}

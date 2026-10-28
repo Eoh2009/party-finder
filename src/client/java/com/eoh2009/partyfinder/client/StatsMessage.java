@@ -12,13 +12,15 @@ import java.util.Locale;
  * Builds the chat summary for one player, e.g.
  *   o0nai (Archer 33) ─ Cata 36.9
  *   Secrets 7.7K (14.0/run) ─ Blood 2.7K
+ *   Gear: Term ✓✪8 ─ Hype ✓✪5 ─ Claymore ✗
+ *   Armor: Spirit Mask ✪6 | Necron 2/4 ✪8.5 | Maxor 1/4 ✪10
  *   [Kick]
- * MP (Phase 6) and the Gear/Armor lines (Phase 5) get added here later.
+ * MP (Phase 6) gets added here later.
  */
 public final class StatsMessage {
 	private static final String SEPARATOR = " ─ ";
 
-	public static Component build(JoinMessage join, DungeonStats s) {
+	public static Component build(JoinMessage join, DungeonStats s, Gear gear) {
 		MutableComponent msg = Component.empty();
 
 		// Line 1: who joined + Catacombs level
@@ -34,7 +36,48 @@ public final class StatsMessage {
 			.append(separator())
 			.append(stat("Blood", shortNumber(s.bloodKills())));
 
-		// Line 3: the button
+		// Line 3: key weapons owned anywhere (inventory, ender chest, backpacks)
+		msg.append("\n").append(text("Gear: ", ChatFormatting.GRAY));
+		if (gear.weapons() == null) {
+			msg.append(text(gear.weaponsError(), ChatFormatting.RED));
+		} else {
+			for (int i = 0; i < gear.weapons().size(); i++) {
+				if (i > 0) {
+					msg.append(separator());
+				}
+				Gear.Weapon w = gear.weapons().get(i);
+				msg.append(text(w.label() + " ", ChatFormatting.WHITE));
+				if (w.owned()) {
+					msg.append(text("✓", ChatFormatting.GREEN)).append(stars(w.stars()));
+				} else {
+					msg.append(text("✗", ChatFormatting.RED));
+				}
+			}
+		}
+
+		// Line 4: worn armor, grouped by set
+		msg.append("\n").append(text("Armor: ", ChatFormatting.GRAY));
+		if (gear.armor() == null) {
+			msg.append(text(gear.armorError(), ChatFormatting.RED));
+		} else if (gear.armor().isEmpty()) {
+			msg.append(text("none", ChatFormatting.WHITE));
+		} else {
+			for (int i = 0; i < gear.armor().size(); i++) {
+				if (i > 0) {
+					msg.append(text(" | ", ChatFormatting.DARK_GRAY));
+				}
+				Gear.ArmorPart part = gear.armor().get(i);
+				msg.append(text(part.name(), ChatFormatting.WHITE));
+				if (part.isSet()) {
+					msg.append(text(" " + part.pieces() + "/4", ChatFormatting.GRAY));
+				}
+				if (part.stars() > 0) {
+					msg.append(text(" ", ChatFormatting.WHITE)).append(stars(part.stars()));
+				}
+			}
+		}
+
+		// Line 5: the button
 		msg.append("\n").append(kickButton(join.name()));
 		return msg;
 	}
@@ -53,6 +96,20 @@ public final class StatsMessage {
 	/** "Cata 36.9" with a gray label and a white value. */
 	private static MutableComponent stat(String label, String value) {
 		return text(label + " ", ChatFormatting.GRAY).append(text(value, ChatFormatting.WHITE));
+	}
+
+	/** "✪8" in gold, or nothing for 0 stars. */
+	private static MutableComponent stars(int stars) {
+		return stars > 0 ? text("✪" + stars, ChatFormatting.GOLD) : Component.empty();
+	}
+
+	/** Armor average: "✪8.5", or "✪9" (not "✪9.0") when it's a whole number. */
+	private static MutableComponent stars(double stars) {
+		String value = String.format(Locale.ROOT, "%.1f", stars);
+		if (value.endsWith(".0")) {
+			value = value.substring(0, value.length() - 2);
+		}
+		return text("✪" + value, ChatFormatting.GOLD);
 	}
 
 	private static MutableComponent separator() {

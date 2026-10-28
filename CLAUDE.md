@@ -66,7 +66,7 @@ Keep lines short; chat is narrow. Shorten names if a line wraps.
 ### Armor line
 - Only armor currently **worn**.
 - Group pieces by set: `<Set> <pieces>/4 ✪<stars>`. Pieces not part of a set are shown by name.
-- Stars per set = **average** of that set's pieces, rounded to nearest whole number.
+- Stars per set = **average** of that set's pieces: one decimal when it isn't a whole number (`✪8.5`), a whole number when it is (`✪9`, not `✪9.0`).
 - Inventory data is base64 + gzipped NBT and needs decoding.
 
 ## Settings
@@ -81,7 +81,7 @@ Keep lines short; chat is narrow. Shorten names if a line wraps.
 - [x] 2. Detect Party Finder join messages and extract name/class/level
 - [x] 3. Mojang + Hypixel lookups (async, cached), basic stats: Cata, Secrets, Blood
 - [x] 4. Formatted chat output + [Kick] button
-- [ ] 5. Gear + armor (NBT decoding)
+- [x] 5. Gear + armor (NBT decoding)
 - [ ] 6. Magical Power
 - [ ] 7. Discord webhook output
 - [ ] 8. Config file, commands, simple GUI

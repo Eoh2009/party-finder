@@ -49,7 +49,42 @@ Blood: candidates that did **not** match, so don't use them:
 | `M.inventory.personal_vault_contents` | |
 | `M.inventory.wardrobe_equipped_slot` | number, not an item blob |
 | `M.inventory.bag_contents.talisman_bag` | accessory bag (for MP) |
-| `M.inventory` (whole object) | missing when inventory API is off (to confirm) |
+| `M.inventory` (whole object) | missing for some co-op members; others have **only** `bag_contents`. So treat a missing `inv_armor` / `inv_contents` as "API off" (checked per field) |
+
+An empty `data` string was not seen in our files; the code still treats it as "no items".
+
+### Inside an item blob (verified by decoding real blobs with Minecraft's `NbtIo.readCompressed`)
+`data` → base64 decode → gzip → NBT compound. Root:
+| NBT path | Type | Notes |
+|---|---|---|
+| `i` | list of compounds | one entry per slot, in slot order. Empty slots have no `tag` |
+| `i[].id` / `i[].Count` / `i[].Damage` | short / byte / short | old numeric vanilla item id, ignore |
+| `i[].tag.ExtraAttributes.id` | string | **SkyBlock item id**, e.g. `TERMINATOR` |
+| `i[].tag.ExtraAttributes.upgrade_level` | int | **stars, newer items.** 0–10 = dungeon + master stars combined (seen values up to 10) |
+| `i[].tag.ExtraAttributes.dungeon_item_level` | int | **stars, older items** (seen on an old `STARRED_BONZO_MASK`, value 5). Never seen together with `upgrade_level` |
+| `i[].tag.ExtraAttributes.dungeon_item` | byte | not needed |
+
+Rule: stars = `upgrade_level` if present, else `dungeon_item_level`, else 0.
+
+`inv_armor` slot order: `#0` boots, `#1` leggings, `#2` chestplate, `#3` helmet.
+
+### Item ids
+Checked against our saved profiles (seen in data) and the public `GET /v2/resources/skyblock/items` list (`items[].id` / `items[].name`).
+| Id | Name | Seen in a profile |
+|---|---|---|
+| `TERMINATOR` | Terminator | yes |
+| `HYPERION` | Hyperion | yes |
+| `SCYLLA` | Scylla | items list only |
+| `ASTRAEA` | Astraea | items list only |
+| `VALKYRIE` | Valkyrie | items list only |
+| `DARK_CLAYMORE` | Dark Claymore | items list only |
+| `POWER_WITHER_<PIECE>` | Necron's … | yes |
+| `SPEED_WITHER_<PIECE>` | Maxor's … | yes |
+| `WISE_WITHER_<PIECE>` | Storm's … | items list only |
+| `TANK_WITHER_<PIECE>` | Goldor's … | items list only |
+| `STARRED_<X>` | same name as `<X>` | e.g. `STARRED_SPIRIT_MASK` = "Spirit Mask" |
+
+`<PIECE>` = `HELMET`, `CHESTPLATE`, `LEGGINGS`, `BOOTS`. Helmet slot can also hold non-set items like `GOLD_NECRON_HEAD`, `STARRED_SPIRIT_MASK`, `COW_HEAD`.
 
 ### Accessories / MP
 | Path | Type | Notes |
