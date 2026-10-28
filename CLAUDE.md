@@ -76,8 +76,8 @@ Keep lines short; chat is narrow. Shorten names if a line wraps.
 
 ## Phases
 - [x] 0. Setup: Java, Git, GitHub, Fabric template runs
-- [ ] 1. Client-only chat message on game join (hello world)
-- [ ] 2. Detect Party Finder join messages and extract name/class/level
+- [x] 1. Client-only chat message on game join (hello world)
+- [x] 2. Detect Party Finder join messages and extract name/class/level
 - [ ] 3. Mojang + Hypixel lookups (async, cached), basic stats: Cata, Secrets, Blood
 - [ ] 4. Formatted chat output + [Kick] button
 - [ ] 5. Gear + armor (NBT decoding)
