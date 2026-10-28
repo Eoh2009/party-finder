@@ -18,7 +18,9 @@ import java.io.IOException;
 import java.net.http.HttpTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.concurrent.CompletionException;
+import java.util.function.Consumer;
 
 public class PartyFinderClient implements ClientModInitializer {
 	// Where /pftest saves the raw Hypixel response, so we can check real field names (rule 7).
@@ -98,30 +100,43 @@ public class PartyFinderClient implements ClientModInitializer {
 		showMessage(join.name() + " (" + join.dungeonClass() + " " + join.classLevel() + ") - looking up...");
 		long start = System.currentTimeMillis();
 
+		// Only /pftest saves the raw response (and only when it's freshly downloaded, not cached).
+		Consumer<String> rawListener = saveResponse ? json -> saveDebugResponse(join.name(), json) : null;
+
 		// whenComplete runs later, on a background thread, once the lookup succeeds or fails.
 		// showMessage then hops back to the game thread to print.
-		ProfileLookup.lookup(join.name()).whenComplete((result, error) -> {
+		ProfileLookup.lookup(join.name(), rawListener).whenComplete((result, error) -> {
 			long ms = System.currentTimeMillis() - start;
 			if (error != null) {
 				showMessage(join.name() + ": lookup failed (" + describe(error) + ")");
 				return;
 			}
-			// Stats parsing comes next, once we've checked a real response's field names.
-			String size = (result.profilesJson().length() / 1024) + " KB";
-			showMessage(join.name() + ": got profile data (" + size + ", " + ms + " ms)");
-			if (saveResponse) {
-				saveDebugResponse(result);
-			}
+			// Simple output for now; the final layout comes in Phase 4.
+			DungeonStats s = result.stats();
+			showMessage(String.format(Locale.ROOT, "%s: Cata %.1f ─ Secrets %s (%.1f/run) ─ Blood %s (%d ms)",
+				join.name(), s.cataLevel(), shortNumber(s.secrets()), s.secretsPerRun(),
+				shortNumber(s.bloodKills()), ms));
 		});
 	}
 
+	/** Shortens big numbers: 950 -> "950", 7700 -> "7.7K", 2500000 -> "2.5M". */
+	static String shortNumber(long n) {
+		if (n < 1000) {
+			return Long.toString(n);
+		}
+		if (n < 1_000_000) {
+			return String.format(Locale.ROOT, "%.1fK", n / 1000.0);
+		}
+		return String.format(Locale.ROOT, "%.1fM", n / 1_000_000.0);
+	}
+
 	/** Writes the Hypixel response to a file, nicely indented so it's readable. */
-	private static void saveDebugResponse(ProfileLookup.Result result) {
+	private static void saveDebugResponse(String name, String json) {
 		try {
 			Files.createDirectories(DEBUG_DIR);
-			Path file = DEBUG_DIR.resolve(result.name() + ".json");
+			Path file = DEBUG_DIR.resolve(name + ".json");
 			String pretty = new GsonBuilder().setPrettyPrinting().create()
-				.toJson(JsonParser.parseString(result.profilesJson()));
+				.toJson(JsonParser.parseString(json));
 			Files.writeString(file, pretty);
 			showMessage("Saved response to " + file);
 		} catch (IOException | RuntimeException e) {

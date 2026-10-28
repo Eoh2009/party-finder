@@ -25,7 +25,7 @@ Goal: faster and more reliable than Odin's version, with a cleaner layout and ge
 4. **Never fail silently.** If anything goes wrong, show a short message, e.g. `o0nai: lookup failed (rate limited)` or `Gear: API off`.
 5. **Cache lookups** (e.g. 10 min per UUID) and respect Hypixel's rate limit.
 6. **Lightweight:** no unnecessary dependencies. Use Gson (ships with Minecraft) for JSON.
-7. **Do not guess API field names or NBT paths.** Verify against a real API response first (save one to a test file) before writing parsing code.
+7. **Do not guess API field names or NBT paths.** Verify against a real API response first (save one to a test file) before writing parsing code. Verified paths are listed in [docs/api-fields.md](docs/api-fields.md).
 
 ## How it works
 1. **Detect joins:** listen to incoming game chat (Fabric API client message events). Strip formatting codes, then match:

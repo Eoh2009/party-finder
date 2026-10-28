@@ -1,5 +1,6 @@
 package com.eoh2009.partyfinder.client;
 
+import com.eoh2009.partyfinder.PartyFinder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -13,6 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -26,18 +28,22 @@ public final class ProfileLookup {
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
-	/** What a successful lookup gives back. profilesJson is Hypixel's raw response text. */
-	public record Result(String name, String uuid, String profilesJson) {}
+	/** What a successful lookup gives back. */
+	public record Result(String name, String uuid, DungeonStats stats) {}
 
 	// A cache entry stores the pending/finished request plus when it expires.
 	// Storing the future (not just the answer) means two lookups of the same player
 	// at the same moment share one request instead of sending two.
 	private record Cached<T>(CompletableFuture<T> future, long expiresAt) {}
 
-	private static final Map<String, Cached<String>> UUID_CACHE = new ConcurrentHashMap<>();     // key: lowercase name
-	private static final Map<String, Cached<String>> PROFILES_CACHE = new ConcurrentHashMap<>(); // key: uuid
+	private static final Map<String, Cached<String>> UUID_CACHE = new ConcurrentHashMap<>();        // key: lowercase name
+	private static final Map<String, Cached<DungeonStats>> STATS_CACHE = new ConcurrentHashMap<>(); // key: uuid
 
-	public static CompletableFuture<Result> lookup(String name) {
+	/**
+	 * Looks up a player's stats. rawListener (may be null) gets Hypixel's raw response
+	 * text when a fresh request is made, for saving debug files; it's not called on a cache hit.
+	 */
+	public static CompletableFuture<Result> lookup(String name, Consumer<String> rawListener) {
 		// Same rule as Minecraft names. Also stops odd characters from breaking the URL.
 		if (!name.matches("\\w{1,16}")) {
 			return CompletableFuture.failedFuture(new LookupException("invalid name"));
@@ -45,15 +51,33 @@ public final class ProfileLookup {
 		// "Async" = continue on a background thread, never the game thread
 		// (fetchProfiles reads the config file).
 		return getUuid(name).thenComposeAsync(uuid ->
-			getProfiles(uuid).thenApply(json -> new Result(name, uuid, json)));
+			getStats(uuid, rawListener).thenApply(stats -> new Result(name, uuid, stats)));
 	}
 
 	private static CompletableFuture<String> getUuid(String name) {
 		return cached(UUID_CACHE, name.toLowerCase(Locale.ROOT), () -> fetchUuid(name));
 	}
 
-	private static CompletableFuture<String> getProfiles(String uuid) {
-		return cached(PROFILES_CACHE, uuid, () -> fetchProfiles(uuid));
+	/** Only the small parsed stats are cached, not the large raw response. */
+	private static CompletableFuture<DungeonStats> getStats(String uuid, Consumer<String> rawListener) {
+		return cached(STATS_CACHE, uuid, () -> fetchProfiles(uuid).thenApply(json -> {
+			if (rawListener != null) {
+				rawListener.accept(json);
+			}
+			return parseStats(json, uuid);
+		}));
+	}
+
+	private static DungeonStats parseStats(String json, String uuid) {
+		try {
+			return DungeonStats.parse(json, uuid);
+		} catch (LookupException e) {
+			throw e;
+		} catch (RuntimeException e) {
+			// The JSON wasn't shaped like we expected.
+			PartyFinder.LOGGER.error("Could not parse profile for {}", uuid, e);
+			throw new LookupException("couldn't read profile data");
+		}
 	}
 
 	/** Returns the cached request if it's still fresh, otherwise starts a new one with fetch. */
