@@ -151,7 +151,7 @@ public class PartyFinderClient implements ClientModInitializer {
 			}
 			showMessage(StatsMessage.build(join, result.stats(), result.gear(), result.accessories()));
 			if (isTest) {
-				// TEMPORARY (Phase 6, step 1): shows that the accessory bag was read correctly.
+				// TEMPORARY (Phase 6, step 2): compare the removed ids with SkyCrypt's inactive accessories.
 				showMessage(Component.literal(result.accessories().debugLine()).withStyle(ChatFormatting.DARK_GRAY));
 				showMessage(Component.literal(timingLine(result.timings(), ms)).withStyle(ChatFormatting.DARK_GRAY));
 			}

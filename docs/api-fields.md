@@ -104,3 +104,15 @@ Checked against our saved profiles (seen in data) and the public `GET /v2/resour
 | `M.accessory_bag_storage.highest_magical_power` | number | highest MP ever reached, **not** current MP |
 | `M.accessory_bag_storage.selected_power` | string | |
 | `M.accessory_bag_storage.tuning.slot_<n>` | object | |
+
+### Accessory families (NEU repo)
+Source: `constants/misc.json` → `talisman_upgrades` in NotEnoughUpdates-REPO (MIT). Each key lists the ids that beat it. We ship a converted copy, `src/client/resources/party-finder/accessory_families.json`, built by `scripts/build_accessory_families.py`. Its header says which NEU commit it came from.
+
+Why it's converted instead of copied as is:
+- Some entries point both ways (all hats, `DANTE_TALISMAN` ↔ `DANTE_RING`), so "does something beat it?" would remove both. These are ties: one tier, and the higher rarity wins.
+- NEU's ids for variants aren't the ids in real bags. Real bags hold `ABICASE` + NBT `model`, and `PARTY_HAT_CRAB_ANIMATED` + NBT `party_hat_color`. Seen in saved bags.
+- `PESTHUNTER_ARTIFACT` doesn't list `PESTHUNTER_RELIC`, so they end up on one tier and rarity decides.
+
+Not verified yet: the real ids of balloon and cake hats (`BALLOON_HAT_2024`, `BALLOON_HAT_2025`, `CAKE_HAT_2026`). They aren't in Hypixel's item list and no saved bag has one. Both spellings are in the family.
+
+Not covered by NEU's upgrades: `CRUX_TALISMAN_1`–`7`, `MASTER_SKULL_TIER_8`–`10`, and `TALISMAN_OF_SPACE` / `RING_OF_SPACE` / `ARTIFACT_OF_SPACE`. All are on NEU's `ignored_talisman` list. Two tiers of these would both stay active.
