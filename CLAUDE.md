@@ -17,7 +17,7 @@ Goal: faster and more reliable than Odin's version, with a cleaner layout and ge
 - Package: `com.eoh2009.partyfinder`, split client/common sources. Almost all code belongs in `src/client`.
 - Editor: VS Code on Windows (Mac later). Run with `.\gradlew.bat runClient`.
 - The dev client is offline (Player102) and cannot join Hypixel. Test chat detection in singleplayer by feeding fake chat messages.
-- Python and Node are NOT installed. Use Java or PowerShell for helper scripts.
+- Windows: Python and Node are NOT installed (use Java or PowerShell for scripts). Mac: Python 3.14 is installed.
 
 ## Hard rules
 1. **Never put the Hypixel API key or Discord webhook URL in code or in git.** They live in the user's config file only (Hypixel API policy forbids sharing keys or embedding them in mods).
