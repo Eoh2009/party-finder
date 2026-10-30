@@ -20,10 +20,17 @@ import java.net.http.HttpTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public class PartyFinderClient implements ClientModInitializer {
 	// Where /pftest <name> save writes the raw Hypixel response, so we can check real field names (rule 7).
 	private static final Path DEBUG_DIR = FabricLoader.getInstance().getGameDir().resolve("party-finder-debug");
+
+	private static final String[] DUNGEON_CLASSES = {"Archer", "Berserk", "Healer", "Mage", "Tank"};
+
+	// Fast lookups skip the "looking up..." line, so chat stays clean.
+	private static final long LOOKING_UP_DELAY_MS = 1000;
 
 	// Static = shared for the whole game session, so it stays true across server joins.
 	private static boolean loadedMessageShown = false;
@@ -49,46 +56,54 @@ public class PartyFinderClient implements ClientModInitializer {
 		});
 
 		// Testing helpers (all of them also show a timing line):
-		//   /pftest                            -> fake join for o0nai
-		//   /pftest <name>                     -> fake join for a real player (does a real lookup)
-		//   /pftest <name> save                -> same, then saves the raw Hypixel response to a file
+		//   /pftest                             -> shows usage help
+		//   /pftest <name>                      -> fake join for a real player (does a real lookup)
+		//   /pftest <name> save                 -> same, then saves the raw Hypixel response to a file
 		//   /pftest <name> <class> <lvl> [save] -> with a chosen class and level
-		ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) ->
-			dispatcher.register(ClientCommands.literal("pftest")
+		ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> {
+			var nameArgument = ClientCommands.argument("name", StringArgumentType.word())
 				.executes(ctx -> {
-					fakeJoin("o0nai", "Archer", 33, false);
+					fakeJoin(StringArgumentType.getString(ctx, "name"), "Archer", 33, false);
 					return 1;
 				})
-				.then(ClientCommands.argument("name", StringArgumentType.word())
+				.then(ClientCommands.literal("save")
 					.executes(ctx -> {
-						fakeJoin(StringArgumentType.getString(ctx, "name"), "Archer", 33, false);
+						fakeJoin(StringArgumentType.getString(ctx, "name"), "Archer", 33, true);
 						return 1;
-					})
-					// A "literal" is a fixed word. Brigadier tries it before the <class> argument.
-					.then(ClientCommands.literal("save")
+					}));
+
+			// Each class is its own fixed word. A free-text <class> argument here would also
+			// accept "save", which is what caused Brigadier's ambiguity warning.
+			for (String dungeonClass : DUNGEON_CLASSES) {
+				nameArgument.then(ClientCommands.literal(dungeonClass)
+					.then(ClientCommands.argument("level", IntegerArgumentType.integer(0, 50))
 						.executes(ctx -> {
-							fakeJoin(StringArgumentType.getString(ctx, "name"), "Archer", 33, true);
+							fakeJoin(
+								StringArgumentType.getString(ctx, "name"),
+								dungeonClass,
+								IntegerArgumentType.getInteger(ctx, "level"),
+								false);
 							return 1;
-						}))
-					.then(ClientCommands.argument("class", StringArgumentType.word())
-						.then(ClientCommands.argument("level", IntegerArgumentType.integer(0, 50))
+						})
+						.then(ClientCommands.literal("save")
 							.executes(ctx -> {
 								fakeJoin(
 									StringArgumentType.getString(ctx, "name"),
-									StringArgumentType.getString(ctx, "class"),
+									dungeonClass,
 									IntegerArgumentType.getInteger(ctx, "level"),
-									false);
+									true);
 								return 1;
-							})
-							.then(ClientCommands.literal("save")
-								.executes(ctx -> {
-									fakeJoin(
-										StringArgumentType.getString(ctx, "name"),
-										StringArgumentType.getString(ctx, "class"),
-										IntegerArgumentType.getInteger(ctx, "level"),
-										true);
-									return 1;
-								})))))));
+							}))));
+			}
+
+			dispatcher.register(ClientCommands.literal("pftest")
+				.executes(ctx -> {
+					showMessage("Usage: /pftest <name> [save]");
+					showMessage("   or: /pftest <name> <class> <level> [save]");
+					return 1;
+				})
+				.then(nameArgument));
+		});
 	}
 
 	/** Builds a fake Hypixel-style message (with color codes, like the real one) and handles it. */
@@ -112,16 +127,23 @@ public class PartyFinderClient implements ClientModInitializer {
 	}
 
 	/**
-	 * Shows the join right away, then looks the player up in the background.
+	 * Looks the player up in the background, and says so if that takes a while.
 	 * isTest = started by /pftest (shows the timing line); save = also write the raw response to a file.
 	 */
 	private static void onJoin(JoinMessage join, boolean isTest, boolean save) {
-		showMessage(join.name() + " (" + join.dungeonClass() + " " + join.classLevel() + ") - looking up...");
 		long start = System.currentTimeMillis();
+		CompletableFuture<ProfileLookup.Result> lookup = ProfileLookup.lookup(join.name(), save);
+
+		// delayedExecutor waits on a background thread, so the game doesn't freeze for that second.
+		CompletableFuture.runAsync(() -> {
+			if (!lookup.isDone()) {
+				showMessage(join.name() + " (" + join.dungeonClass() + " " + join.classLevel() + ") - looking up...");
+			}
+		}, CompletableFuture.delayedExecutor(LOOKING_UP_DELAY_MS, TimeUnit.MILLISECONDS));
 
 		// whenComplete runs later, on a background thread, once the lookup succeeds or fails.
 		// showMessage then hops back to the game thread to print.
-		ProfileLookup.lookup(join.name(), save).whenComplete((result, error) -> {
+		lookup.whenComplete((result, error) -> {
 			long ms = System.currentTimeMillis() - start;
 			if (error != null) {
 				showMessage(join.name() + ": lookup failed (" + describe(error) + ")");

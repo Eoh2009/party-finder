@@ -16,15 +16,15 @@ Goal: faster and more reliable than Odin's version, with a cleaner layout and ge
 - Java 25, written in Java (not Kotlin)
 - Package: `com.eoh2009.partyfinder`, split client/common sources. Almost all code belongs in `src/client`.
 - Editor: VS Code on Windows (Mac later). Run with `.\gradlew.bat runClient`.
-- The dev client is offline (Player102) and cannot join Hypixel. Test chat detection in singleplayer by feeding fake chat messages.
+- The dev client is offline (Player102) and cannot join Hypixel. Test in singleplayer with `/pftest` (see Testing).
 - Windows: Python and Node are NOT installed (use Java or PowerShell for scripts). Mac: Python 3.14 is installed.
 
 ## Hard rules
 1. **Never put the Hypixel API key or Discord webhook URL in code or in git.** They live in the user's config file only (Hypixel API policy forbids sharing keys or embedding them in mods).
 2. **Read-only mod.** No automated actions. The only action is the clickable `[Kick]` button, which runs `/p kick <name>` only when I click it.
 3. **Never do network calls on the render/main thread.** Use async HTTP (`java.net.http.HttpClient` with `sendAsync`) and hop back to the client thread to print.
-4. **Never fail silently.** If anything goes wrong, show a short message, e.g. `o0nai: lookup failed (rate limited)` or `Gear: API off`.
-5. **Cache lookups** (e.g. 10 min per UUID) and respect Hypixel's rate limit.
+4. **Never fail silently.** If anything goes wrong, show a short message, e.g. `Steve123: lookup failed (rate limited)` or `Gear: API off`.
+5. **Cache lookups** (10 min per player) and respect Hypixel's rate limit. Each request times out after 15 s and retries once, only on a timeout.
 6. **Lightweight:** no unnecessary dependencies. Use Gson (ships with Minecraft) for JSON.
 7. **Do not guess API field names or NBT paths.** Verify against a real API response first (save one to a test file) before writing parsing code. Verified paths are listed in [docs/api-fields.md](docs/api-fields.md).
 
@@ -35,17 +35,17 @@ Goal: faster and more reliable than Odin's version, with a cleaner layout and ge
 2. **Name → UUID:** Mojang API.
 3. **Profile:** Hypixel `/v2/skyblock/profiles?uuid=<uuid>` with header `API-Key`. Use the profile where `selected` is true, then that player's member data.
 4. **Parse** only the stats below; ignore the rest.
-5. **Output** to client chat and/or Discord webhook, based on settings.
+5. **Output** to client chat and/or Discord webhook, based on settings. A `looking up...` line shows only if the lookup takes longer than 1 s.
 
 ## Output format (chat)
 ```
-o0nai (Archer 33) ─ Cata 36.9 ─ MP 805
+Steve123 (Archer 33) ─ Cata 36.9 ─ MP 805
 Secrets 7.7K (14.0/run) ─ Blood 2.7K
 Gear: Term ✓✪8 ─ Hype ✓✪5 ─ Claymore ✗
-Armor: Spirit Mask 1/4 ✪6 | Necron 2/4 ✪7 | Maxor 1/4 ✪10
+Armor: Spirit Mask ✪6 | Necron 2/4 ✪7 | Maxor 1/4 ✪10
 [Kick]
 ```
-Keep lines short; chat is narrow. Shorten names if a line wraps.
+Keep lines short; chat is narrow. Shorten names if a line wraps. MP isn't shown yet (Phase 6).
 
 ### Stat definitions
 - **Cata:** Catacombs level from XP (needs the XP→level table), 1 decimal.
@@ -70,10 +70,14 @@ Keep lines short; chat is narrow. Shorten names if a line wraps.
 - Inventory data is base64 + gzipped NBT and needs decoding.
 
 ## Settings
-- Toggles: output to chat, output to Discord.
-- Values: Hypixel API key, Discord webhook URL.
-- Stored in a JSON config file in the game's `config/` folder.
-- Start with commands (e.g. `/pf toggle discord`), add a simple GUI screen later.
+- Now: `ModConfig` stores only `hypixelApiKey` in `config/party-finder.json`. The file is created empty on first launch and read on each lookup, so a new key works without a restart.
+- Planned (Phase 8): toggles for chat and Discord output, Discord webhook URL, commands (e.g. `/pf toggle discord`), then a simple GUI screen.
+
+## Testing
+`/pftest` fakes a join message and shows a timing line. Plain `/pftest` shows usage.
+- `/pftest <name>`: real lookup, using Archer 33.
+- `/pftest <name> save`: also saves the raw Hypixel response to `party-finder-debug/<name>.json`.
+- `/pftest <name> <class> <level> [save]`: class is one of Archer, Berserk, Healer, Mage, Tank (capitalized).
 
 ## Phases
 - [x] 0. Setup: Java, Git, GitHub, Fabric template runs
