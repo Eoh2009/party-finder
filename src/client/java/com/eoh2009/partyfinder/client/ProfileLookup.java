@@ -31,10 +31,11 @@ public final class ProfileLookup {
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
 	/** What a successful lookup gives back. rawJson is null unless keepRaw was asked for. */
-	public record Result(String name, String uuid, DungeonStats stats, Gear gear, Timings timings, String rawJson) {}
+	public record Result(String name, String uuid, DungeonStats stats, Gear gear, Accessories accessories,
+			Timings timings, String rawJson) {}
 
-	/** What gets cached per player: the parsed stats and gear (not the big raw response). */
-	private record Parsed(DungeonStats stats, Gear gear) {}
+	/** What gets cached per player: the parsed stats, gear and accessories (not the big raw response). */
+	private record Parsed(DungeonStats stats, Gear gear, Accessories accessories) {}
 
 	/**
 	 * How long each step took, in ms. -1 means the step didn't run (answer came from the cache).
@@ -44,7 +45,7 @@ public final class ProfileLookup {
 		public volatile long mojangMs = -1;
 		public volatile long hypixelMs = -1;
 		public volatile long parseMs = -1;
-		public volatile long gearMs = -1; // decoding the inventory/backpack item blobs
+		public volatile long gearMs = -1; // decoding the inventory/backpack/accessory item blobs
 		public volatile int retries = 0;
 	}
 
@@ -72,7 +73,8 @@ public final class ProfileLookup {
 		// (fetchProfiles reads the config file).
 		return getUuid(name, timings).thenComposeAsync(uuid ->
 			getStats(uuid, raw, timings).thenApply(parsed ->
-				new Result(name, uuid, parsed.stats(), parsed.gear(), timings, raw == null ? null : raw.get())));
+				new Result(name, uuid, parsed.stats(), parsed.gear(), parsed.accessories(), timings,
+					raw == null ? null : raw.get())));
 	}
 
 	private static CompletableFuture<String> getUuid(String name, Timings timings) {
@@ -111,8 +113,9 @@ public final class ProfileLookup {
 			// Timed separately: there can be many backpacks to decode.
 			long gearStart = System.currentTimeMillis();
 			Gear gear = Gear.parse(member);
+			Accessories accessories = Accessories.parse(member);
 			timings.gearMs = System.currentTimeMillis() - gearStart;
-			return new Parsed(stats, gear);
+			return new Parsed(stats, gear, accessories);
 		} catch (LookupException e) {
 			throw e;
 		} catch (RuntimeException e) {

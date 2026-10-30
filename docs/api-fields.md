@@ -48,7 +48,7 @@ Blood: candidates that did **not** match, so don't use them:
 | `M.inventory.backpack_contents.<n>` | one entry per backpack |
 | `M.inventory.personal_vault_contents` | |
 | `M.inventory.wardrobe_equipped_slot` | number, not an item blob |
-| `M.inventory.bag_contents.talisman_bag` | accessory bag (for MP) |
+| `M.inventory.bag_contents.talisman_bag` | accessory bag (for MP). Missing = "API off", same as `inv_armor` (seen on co-op members with only `sacks_bag`, or no `inventory`) |
 | `M.inventory` (whole object) | missing for some co-op members; others have **only** `bag_contents`. So treat a missing `inv_armor` / `inv_contents` as "API off" (checked per field) |
 
 An empty `data` string was not seen in our files; the code still treats it as "no items".
@@ -63,10 +63,22 @@ An empty `data` string was not seen in our files; the code still treats it as "n
 | `i[].tag.ExtraAttributes.upgrade_level` | int | **stars, newer items.** 0–10 = dungeon + master stars combined (seen values up to 10) |
 | `i[].tag.ExtraAttributes.dungeon_item_level` | int | **stars, older items** (seen on an old `STARRED_BONZO_MASK`, value 5). Never seen together with `upgrade_level` |
 | `i[].tag.ExtraAttributes.dungeon_item` | byte | not needed |
+| `i[].tag.ExtraAttributes.rarity_upgrades` | int | 1 = recombobulated. Not needed: the lore already shows the upgraded rarity |
+| `i[].tag.display.Lore` | list of strings | item text with `§` color codes. **Last line = rarity** (see below) |
 
 Rule: stars = `upgrade_level` if present, else `dungeon_item_level`, else 0.
 
 `inv_armor` slot order: `#0` boots, `#1` leggings, `#2` chestplate, `#3` helmet.
+
+Last lore line of accessories (416 items in 5 real bags, every one fits one of these):
+| Raw line | Meaning |
+|---|---|
+| `§9§lRARE ACCESSORY` | normal |
+| `§6§lLEGENDARY DUNGEON ACCESSORY` | dungeon accessory: `DUNGEON` comes between rarity and type |
+| `§d§l§ka§r §d§lMYTHIC ACCESSORY §d§l§ka` | recombobulated: scrambled (`§k`) letter on each side. Matched `rarity_upgrades` on all 416 items |
+| `...SPECIAL HATCESSORY`, `...VERY SPECIAL HATCESSORY` | `PARTY_HAT_CRAB_ANIMATED`: `HATCESSORY` instead of `ACCESSORY`, and a two-word rarity |
+
+Rarities seen: `COMMON`, `UNCOMMON`, `RARE`, `EPIC`, `LEGENDARY`, `MYTHIC`, `SPECIAL`, `VERY SPECIAL`.
 
 ### Item ids
 Checked against our saved profiles (seen in data) and the public `GET /v2/resources/skyblock/items` list (`items[].id` / `items[].name`).

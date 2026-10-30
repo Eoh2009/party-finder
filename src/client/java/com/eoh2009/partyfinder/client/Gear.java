@@ -161,8 +161,8 @@ public record Gear(List<Weapon> weapons, String weaponsError, List<ArmorPart> ar
 		return result;
 	}
 
-	/** Turns one {data, type} blob into its list of item slots. */
-	private static ListTag decode(JsonObject blob) throws IOException {
+	/** Turns one {data, type} blob into its list of item slots. Accessories uses this too. */
+	static ListTag decode(JsonObject blob) throws IOException {
 		JsonElement data = blob.get("data");
 		if (data == null || data.getAsString().isEmpty()) {
 			return new ListTag();
@@ -174,7 +174,7 @@ public record Gear(List<Weapon> weapons, String weaponsError, List<ArmorPart> ar
 	}
 
 	/** SkyBlock's own item data lives in tag.ExtraAttributes. Empty for empty slots. */
-	private static CompoundTag extraAttributes(CompoundTag item) {
+	static CompoundTag extraAttributes(CompoundTag item) {
 		return item.getCompoundOrEmpty("tag").getCompoundOrEmpty("ExtraAttributes");
 	}
 

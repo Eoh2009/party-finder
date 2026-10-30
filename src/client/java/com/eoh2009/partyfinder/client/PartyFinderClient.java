@@ -149,8 +149,10 @@ public class PartyFinderClient implements ClientModInitializer {
 				showMessage(join.name() + ": lookup failed (" + describe(error) + ")");
 				return;
 			}
-			showMessage(StatsMessage.build(join, result.stats(), result.gear()));
+			showMessage(StatsMessage.build(join, result.stats(), result.gear(), result.accessories()));
 			if (isTest) {
+				// TEMPORARY (Phase 6, step 1): shows that the accessory bag was read correctly.
+				showMessage(Component.literal(result.accessories().debugLine()).withStyle(ChatFormatting.DARK_GRAY));
 				showMessage(Component.literal(timingLine(result.timings(), ms)).withStyle(ChatFormatting.DARK_GRAY));
 			}
 			// Saving happens last, so it never delays the stats (we're still on a background thread here).

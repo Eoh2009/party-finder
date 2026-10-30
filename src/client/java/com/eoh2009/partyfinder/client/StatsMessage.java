@@ -20,7 +20,7 @@ import java.util.Locale;
 public final class StatsMessage {
 	private static final String SEPARATOR = " ─ ";
 
-	public static Component build(JoinMessage join, DungeonStats s, Gear gear) {
+	public static Component build(JoinMessage join, DungeonStats s, Gear gear, Accessories accessories) {
 		MutableComponent msg = Component.empty();
 
 		// Line 1: who joined + Catacombs level
@@ -28,6 +28,12 @@ public final class StatsMessage {
 			.append(text(" (" + join.dungeonClass() + " " + join.classLevel() + ")", ChatFormatting.GRAY))
 			.append(separator())
 			.append(stat("Cata", String.format(Locale.ROOT, "%.1f", s.cataLevel())));
+		// No MP number yet, but say so if we won't be able to work it out.
+		if (accessories.error() != null) {
+			msg.append(separator())
+				.append(text("MP: ", ChatFormatting.GRAY))
+				.append(text(accessories.error(), ChatFormatting.RED));
+		}
 
 		// Line 2: secrets and blood mob kills
 		msg.append("\n")
